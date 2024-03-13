@@ -201,7 +201,7 @@ def avgpool2D_complex(x, window_size):
     
     # as tensor with shape [9, h, w]
     x_init = x
-    n_channels = np.product(x.shape[2:])
+    n_channels = np.prod(x.shape[2:])
     x = torch.tensor(np.transpose(x.reshape(*x.shape[:2],-1), [2,0,1])).type(torch.cfloat)
 
     # average with a window size 

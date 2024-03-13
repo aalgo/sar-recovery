@@ -291,3 +291,38 @@ def normalize_quadpol_coherence_matrix(x, window_size):
     r = np.r_[[d1.real, d2.real, d3.real, rho12.real, rho12.imag, rho13.real, rho13.imag, rho23.real, rho23.imag]]
     r = np.transpose(r, [1,2,0])
     return r
+
+def denormalize_quadpol_coherence_matrix(x, P):
+    """
+    De-normalizes a quad pol coherence matrix
+    
+    Parameters
+    ----------
+    x: ndarray of shape (h,w,9)
+        where for each pixel you get 9 real numbers:
+        d1, d2, d3, rho12.real, rho12.imag, rho13.real, rho13.imag, rho23.real, rho23.imag
+    P: ndarray of shape (h,w)
+        The total power or trace of the coherency matrix
+    
+    Returns
+    -------
+    ndarray of shape (h,w,3,3)
+        Covariance or coherency matrix corresponding to the inverse process of
+        normalization.
+    
+    """
+    
+    C = np.zeros(x.shape[:2] + (3,3), dtype=np.complex64)
+    C[..., 0, 0].real = x[..., 0]
+    C[..., 1, 1].real = x[..., 1]
+    C[..., 2, 2].real = x[..., 2]
+    C[..., 0, 1] = (x[..., 3] + 1j*x[..., 4]) * np.sqrt(x[..., 0] * x[..., 1])
+    C[..., 0, 2] = (x[..., 5] + 1j*x[..., 6]) * np.sqrt(x[..., 0] * x[..., 2])
+    C[..., 1, 2] = (x[..., 7] + 1j*x[..., 8]) * np.sqrt(x[..., 1] * x[..., 2])
+    C[..., 1, 0] = C[..., 0, 1].conj()
+    C[..., 2, 0] = C[..., 0, 2].conj()
+    C[..., 2, 1] = C[..., 1, 2].conj()
+    
+    # multiply by P
+    C *= P[..., np.newaxis, np.newaxis]
+    return C

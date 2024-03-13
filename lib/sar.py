@@ -326,3 +326,233 @@ def denormalize_quadpol_coherence_matrix(x, P):
     # multiply by P
     C *= P[..., np.newaxis, np.newaxis]
     return C
+
+def get_scattering_vector_from_S_matrix(sm):
+    """
+    Computes de scattering vector w_l in lexicographic base from the
+    input scattering matrix sm.
+
+    Parameters
+    ----------
+    sm : ndarray, shape (..., 2, 2)
+        The scattering matrix, corresponding to the polarization channels
+        [[HH, HV], [VH, VV]] in the last 2 dimensions.
+
+    Returns
+    -------
+    wl : ndarray, shape (..., 3)
+        Vectorization of the scattering matrix S assuming reciprocity
+        (monostatic radar).
+
+    """
+    wl = np.asarray([sm[...,0,0],
+                     (sm[...,0,1] + sm[...,1,0])/np.sqrt(2),
+                     sm[...,1,1],])
+    wl = np.transpose(wl, (1,2,0))
+    return wl
+
+def get_Pauli_vector_from_S_matrix(sm):
+    """
+    Computes de scattering vector w_p in Pauli basis from the
+    input scattering matrix sm.
+
+    Parameters
+    ----------
+    sm : ndarray, shape (..., 2, 2)
+        The scattering matrix, corresponding to the polarization channels
+        [[HH, HV], [VH, VV]] in the last 2 dimensions.
+
+    Returns
+    -------
+    wp : ndarray, shape (..., 3)
+        Vectorization of the scattering matrix S in Pauli basisassuming
+        reciprocity (monostatic radar).
+
+    """
+    wp = np.asarray([sm[...,0,0] + sm[...,1,1],
+                     sm[...,0,0] - sm[...,1,1],
+                     sm[...,0,1] + sm[...,1,0],
+                     ])/np.sqrt(2)
+    wp = np.transpose(wp, (1,2,0))
+    return wp
+
+def get_covariance_matrix_from_w(w):
+    """
+    Computes the covariance matrix from the given scattering vector w,
+    without averaging.
+
+    Parameters
+    ----------
+    w : ndarray, shape (..., 3)
+        Scattering vector
+
+    Returns
+    -------
+    C : ndarray, shape (..., 3, 3)
+        Outer product of the input scattering vector w with himself conjugate,
+        in order to build the complex covariance matrix.
+
+    """
+    C = np.einsum("...i,...j->...ij", w, w.conj())
+    return C
+
+def get_T_from_C(C):
+    """
+    Changes basis from an input Covariance matrix C, to a coherency matrix T
+    (covariance matrix in lexicographic basis to Pauli basis)
+
+    Parameters
+    ----------
+    C : ndarray, shape (..., 3, 3)
+        Covariance matrix in lexicographic basis
+
+    Returns
+    -------
+    T : ndarray, shape (..., 3, 3)
+        Coherency matrix T or covariance matrix in Pauli basis
+    """
+    # Define change of basis matrix N
+    N = np.asarray([[1, 0, 1], [1, 0, -1], [0, np.sqrt(2), 0]]) / np.sqrt(2)
+    # Perform change of basis
+    return N @ C @ N.T
+
+def get_C_from_T(T):
+    """
+    Changes basis from an input Coherency matrix T, to a covariance matrix C
+    (covariance matrix in Pauli basis to lexicographic basis)
+
+    Parameters
+    ----------
+    T : ndarray, shape (..., 3, 3)
+        Coherency or Covariance matrix in Pauli basis
+
+    Returns
+    -------
+    C : ndarray, shape (..., 3, 3)
+        Covariance matrix in lexicographic basis
+    """
+    # Define change of basis matrix N
+    N = np.asarray([[1, 0, 1], [1, 0, -1], [0, np.sqrt(2), 0]]) / np.sqrt(2)
+    # Perform change of basis
+    return N.T @ T @ N
+
+def H_alpha_plane_classification(T):
+    """
+    Perform the H alpha plane unsupervised classification into 8 classes,
+    as defined in [1].
+
+    Parameters
+    ----------
+    T : ndarray, shape (..., 3, 3)
+        Coherency or Covariance matrix in Pauli basis
+
+    Returns
+    -------
+    cl : ndarray, shape (...)
+        classification result with an integer number in the range [1...8]
+        corresponding to the class in the H alpha plane.
+        
+    Note
+    ------
+    Note that the class ordering is different from the paper.
+    The classes are ordered to be represented by a jet colorbar, with low
+    entropy classes having a lower number than higher ones.
+    
+    References
+    ----------
+    [1] Cloude, S. R., & Pottier, E. (1997). An entropy based classification
+    scheme for land applications of polarimetric SAR. IEEE transactions on
+    geoscience and remote sensing, 35(1), 68-78.
+
+    """
+    H, A, alpha = get_H_A_alpha(T)
+    cl = np.zeros_like(H, dtype=np.int32)
+    # Classes 1, 2 & 3 (low entropy)
+    low_ent = (H<0.5)
+    w = np.where(low_ent & (alpha < np.deg2rad(42.5)))
+    cl[w] = 1
+    w = np.where(low_ent & (alpha >= np.deg2rad(42.5)) & (alpha < np.deg2rad(47.5)))
+    cl[w] = 2
+    w = np.where(low_ent & (alpha >= np.deg2rad(47.5)))
+    cl[w] = 3
+    # Classes 4, 5 & 6 (med entropy)
+    med_ent = (H>=0.5) & ((H<0.9))
+    w = np.where(med_ent & (alpha < np.deg2rad(40)))
+    cl[w] = 4
+    w = np.where(med_ent & (alpha >= np.deg2rad(40)) & (alpha < np.deg2rad(50)))
+    cl[w] = 5
+    w = np.where(med_ent & (alpha >= np.deg2rad(50)))
+    cl[w] = 6
+    # Classes 7 & 8 (high entropy)
+    hi_ent = (H>=0.9)
+    w = np.where(hi_ent & (alpha < np.deg2rad(55)))
+    cl[w] = 7
+    w = np.where(hi_ent & (alpha >= np.deg2rad(55)))
+    cl[w] = 8
+    return cl
+    
+
+def H_A_alpha_plane_classification(T):
+    """
+    Perform the H A alpha plane unsupervised classification into 16 classes,
+    as defined in [1] and using Anisotropy to separate each class into 2 [2].
+
+    Parameters
+    ----------
+    T : ndarray, shape (..., 3, 3)
+        Coherency or Covariance matrix in Pauli basis
+
+    Returns
+    -------
+    cl : ndarray, shape (...)
+        classification result with an integer number in the range [1...16]
+        corresponding to the class in the H alpha plane.
+        
+    Note
+    ------
+    Note that the class ordering is different from the paper.
+    The classes are ordered to be represented by a jet colorbar, with low
+    entropy classes having a lower number than higher ones.
+    
+    References
+    ----------
+    [1] Cloude, S. R., & Pottier, E. (1997). An entropy based classification
+    scheme for land applications of polarimetric SAR. IEEE transactions on
+    geoscience and remote sensing, 35(1), 68-78.
+    
+    [2] Lee, J. S., & Pottier, E. (2017). Polarimetric radar imaging: from
+    basics to applications. CRC press.
+
+    """
+    # First perform H alpha classification and then use A to separate each
+    # class into 2
+    H, A, alpha = get_H_A_alpha(T)
+    cl = np.zeros_like(H, dtype=np.int32)
+    # Classes 1, 2 & 3 (low entropy)
+    low_ent = (H<0.5)
+    w = np.where(low_ent & (alpha < np.deg2rad(42.5)))
+    cl[w] = 1
+    w = np.where(low_ent & (alpha >= np.deg2rad(42.5)) & (alpha < np.deg2rad(47.5)))
+    cl[w] = 2
+    w = np.where(low_ent & (alpha >= np.deg2rad(47.5)))
+    cl[w] = 3
+    # Classes 4, 5 & 6 (med entropy)
+    med_ent = (H>=0.5) & ((H<0.9))
+    w = np.where(med_ent & (alpha < np.deg2rad(40)))
+    cl[w] = 4
+    w = np.where(med_ent & (alpha >= np.deg2rad(40)) & (alpha < np.deg2rad(50)))
+    cl[w] = 5
+    w = np.where(med_ent & (alpha >= np.deg2rad(50)))
+    cl[w] = 6
+    # Classes 7 & 8 (high entropy)
+    hi_ent = (H>=0.9)
+    w = np.where(hi_ent & (alpha < np.deg2rad(55)))
+    cl[w] = 7
+    w = np.where(hi_ent & (alpha >= np.deg2rad(55)))
+    cl[w] = 8
+    # Finally use A with a 0.5 threshold to divide each class into 2.
+    w = np.where(A < 0.5)
+    cl[w] = 2 * cl[w] - 1
+    w = np.where(A >= 0.5)
+    cl[w] = 2 * cl[w]
+    return cl

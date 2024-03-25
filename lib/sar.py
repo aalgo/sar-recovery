@@ -576,7 +576,7 @@ def matlog(C):
     """
     W,V = np.linalg.eigh(C)
     Wl = np.log(W)
-    return np.einsum("...ij,...j,...jk->...ik", V, Wl, np.transpose(V.conj(), axes=(0,1,3,2)))
+    return np.einsum("...ij,...j,...jk->...ik", V, Wl, np.swapaxes(V.conj(), -1, -2))
 
 def matexp(C):
     """
@@ -597,4 +597,4 @@ def matexp(C):
     """
     W,V = np.linalg.eigh(C)
     We = np.exp(W)
-    return np.einsum("...ij,...j,...jk->...ik", V, We, np.transpose(V.conj(), axes=(0,1,3,2)))
+    return np.einsum("...ij,...j,...jk->...ik", V, We, np.swapaxes(V.conj(), -1, -2))

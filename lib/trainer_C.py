@@ -19,7 +19,7 @@ class Trainer_C:
         self.split_mask = split_mask
         self.input_features = input_features
         self.feature_to_predict = feature_to_predict
-        self.comp_to_predict = comp_to_predict
+        self.comp_to_predict = str(comp_to_predict).lower()
 
         if not (input_matrix_train.shape[:2] == input_matrix_test.shape[:2] == output_matrix_train.shape[:2] == output_matrix_test.shape[:2]):
             raise ValueError("all matrices and normed coherences must have the same pixel size")
@@ -30,31 +30,36 @@ class Trainer_C:
         if not (output_matrix_train.shape[2:] == output_matrix_test.shape[2:]):
             raise ValueError(f"output matrices must have the same shape {output_matrix_train.shape[2:]} vs {output_matrix_test.shape[2:]}")
         
-        if not comp_to_predict.lower() in ["real", "imag"]:
+        if not self.comp_to_predict in ["real", "imag"]:
             raise ValueError("component to predict must be 'real' or 'imag'")
         
     def split(self):
         # build x
         xtr = []
         xts = []
+        xnames = []
         for f in self.input_features:
             i,j = f
             
             if i == j:
                 xtr.append(self.input_matrix_train[:,:,i,j][self.split_mask==TRAIN].real.flatten())
                 xts.append(self.input_matrix_test[:,:,i,j][self.split_mask==TEST].real.flatten())
+                xnames.append(f"{f}")
             else:
                 xtr.append(self.input_matrix_train[:,:,i,j][self.split_mask==TRAIN].real.flatten())
                 xtr.append(self.input_matrix_train[:,:,i,j][self.split_mask==TRAIN].imag.flatten())
+                xnames.append(f"{f}.real")
                 xts.append(self.input_matrix_test[:,:,i,j][self.split_mask==TEST].real.flatten())
                 xts.append(self.input_matrix_test[:,:,i,j][self.split_mask==TEST].imag.flatten())
+                xnames.append(f"{f}.imag")
 
         self.xtr = np.r_[xtr].T
         self.xts = np.r_[xts].T
+        self.xnames = xnames
 
         # build y
         i,j = self.feature_to_predict
-        if i==j or self.comp_to_predict.lower() == "real":
+        if i==j or self.comp_to_predict == "real":
             self.ytr = self.output_matrix_train[:,:,i,j].real[self.split_mask==TRAIN]
             self.yts = self.output_matrix_test[:,:,i,j].real[self.split_mask==TEST]
         else:
@@ -63,7 +68,8 @@ class Trainer_C:
         return self
     
     def plot_distributions(self):
-        n = len(self.input_features)+1
+        #n = len(self.input_features)+1
+        n = self.xtr.shape[-1] + 1
         for ax,i in subplots(n, usizex=4):
             
             if i < n-1:
@@ -78,13 +84,13 @@ class Trainer_C:
                 plt.hist(xtri, bins=100, alpha=.5, density=True, label='train')
                 plt.hist(xtsi, bins=100, alpha=.5, density=True, label='test')
                 plt.grid()
-                plt.title(f"distribution of input {self.input_features[i]}")
+                plt.title(f"distribution of input {self.xnames[i]}")
                 plt.legend();                
             else:
                 plt.hist(self.ytr, bins=100, alpha=.5, density=True, label='train')
                 plt.hist(self.yts, bins=100, alpha=.5, density=True, label='test')
                 plt.grid()
-                plt.title(f"distribution of predictive target {self.feature_to_predict}")
+                plt.title(f"distribution of predictive target {self.feature_to_predict}.{self.comp_to_predict}")
                 plt.legend();
                 
     def set_estimator(self, estimator):

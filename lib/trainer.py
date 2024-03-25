@@ -6,35 +6,31 @@ TRAIN, TEST, VAL = 0,1,2
 
 class Trainer:
     
-    def __init__(self, scatter_matrix_train, scatter_matrix_test, 
-                       norm_coherence_train, norm_coherence_test, 
+    def __init__(self, coherence_matrix_train, coherence_matrix_test, 
                        split_mask,
-                       input_features, feature_to_predict):
+                       input_features, feature_to_predict, fit_log=False):
         
-        self.scatter_matrix_train = scatter_matrix_train
-        self.scatter_matrix_test = scatter_matrix_test
-        self.norm_coherence_train = norm_coherence_train
-        self.norm_coherence_test = norm_coherence_test
+        self.coherence_matrix_train = coherence_matrix_train
+        self.coherence_matrix_test = coherence_matrix_test
         self.split_mask = split_mask
         self.input_features = input_features
         self.feature_to_predict = feature_to_predict
+        self.fit_log = fit_log
 
-        self.scmap = {'HH': (0,0), 'VV': (1,1), 'HV': (0,1), 'VH': (1,0) }
-        self.ncmap = {'d1':0, 'd2':1, 'd3':2,  'rho12.real':3, 'rho12.imag':4, 'rho13.real':5, 'rho13.imag':6, 'rho23.real':7, 'rho23.imag':8}
+        self.cmmap = {'Shh':    (0,0), 'ShhShv': (0,1), 'ShhSvv': (0,2),
+                      'ShvShh': (1,0), 'Shv':    (1,1), 'ShvSvv': (1,2),
+                      'SvvShh': (2,0), 'SvvShv': (2,1), 'Svv':    (2,2)}
 
-        if not (scatter_matrix_train.shape[:2] == scatter_matrix_test.shape[:2] == norm_coherence_train.shape[:2] == norm_coherence_test.shape[:2]):
-            raise ValueError("all scatter matrices and normed coherences must have the same pixel size")
+        if not (coherence_matrix_test.shape[:2] == coherence_matrix_train.shape[:2]):
+            raise ValueError("both coherence matrices must have the same pixel size")
 
-        if not (scatter_matrix_train.shape[2:] == scatter_matrix_test.shape[2:] == (2,2)):
-            raise ValueError("scatter matrices must be of shape [h,w,2,2]")
+        if not (coherence_matrix_train.shape[2:] == coherence_matrix_train.shape[2:] == (3,3)):
+            raise ValueError("coherence matrices must be of shape [h,w,3,3]")
 
-        if not (norm_coherence_train.shape[2:] == norm_coherence_test.shape[2:] == (9,)):
-            raise ValueError("normed coeherence must be of shape [h,w,9]")
-
-        if sum([i in self.scmap.keys() for i in input_features])!=len(input_features):
+        if sum([i in self.cmmap.keys() for i in input_features])!=len(input_features):
             raise ValueError(f"invalid input features {input_features}")
 
-        if not feature_to_predict in self.ncmap.keys():
+        if not feature_to_predict in self.cmmap.keys():
             raise ValueError(f"invalid feature to predict {feature_to_predict}")
         
     def split(self):
@@ -42,25 +38,31 @@ class Trainer:
         xtr = []
         xts = []
         for f in self.input_features:
-            i,j = self.scmap[f]
+            i,j = self.cmmap[f]
 
-            xtr.append(self.scatter_matrix_train[:,:,i,j][self.split_mask==TRAIN].real.flatten())
-            xtr.append(self.scatter_matrix_train[:,:,i,j][self.split_mask==TRAIN].imag.flatten())
-            xts.append(self.scatter_matrix_test[:,:,i,j][self.split_mask==TEST].real.flatten())
-            xts.append(self.scatter_matrix_test[:,:,i,j][self.split_mask==TEST].imag.flatten())
+            xtr.append(self.coherence_matrix_train[:,:,i,j][self.split_mask==TRAIN].real.flatten())
+            xts.append(self.coherence_matrix_test[:,:,i,j][self.split_mask==TEST].real.flatten())
+
+            if not f in ['Shh', 'Shv', 'Svv']:
+                xtr.append(self.coherence_matrix_train[:,:,i,j][self.split_mask==TRAIN].imag.flatten())
+                xts.append(self.coherence_matrix_test[:,:,i,j][self.split_mask==TEST].imag.flatten())
 
         self.xtr = np.r_[xtr].T
         self.xts = np.r_[xts].T
 
         # build y
-        i = self.ncmap[self.feature_to_predict]
-        self.ytr = self.norm_coherence_train[:,:,i][self.split_mask==TRAIN]
-        self.yts = self.norm_coherence_test[:,:,i][self.split_mask==TEST]
+        i,j = self.cmmap[self.feature_to_predict]
+        self.ytr = self.coherence_matrix_train[:,:,i,j][self.split_mask==TRAIN].real
+        self.yts = self.coherence_matrix_test[:,:,i,j][self.split_mask==TEST].real
         
+        if self.fit_log:
+            self.ytr = np.log(self.ytr)
+            self.yts = np.log(self.yts)
+
         return self
     
     def plot_distributions(self):
-        n = len(self.input_features)+1
+        n = self.xtr.shape[1]+1
         for ax,i in subplots(n, usizex=4):
             
             if i < n-1:
@@ -75,11 +77,17 @@ class Trainer:
                 plt.hist(xtri, bins=100, alpha=.5, density=True, label='train')
                 plt.hist(xtsi, bins=100, alpha=.5, density=True, label='test')
                 plt.grid()
-                plt.title(f"distribution of input {self.input_features[i]}")
+                plt.title(f"distribution of input column {i}")
                 plt.legend();                
             else:
-                plt.hist(self.ytr, bins=100, alpha=.5, density=True, label='train')
-                plt.hist(self.yts, bins=100, alpha=.5, density=True, label='test')
+                a,b = np.percentile(self.ytr, [1,99])
+                ytri = self.ytr[(self.ytr>a)&(self.ytr<b)]
+                
+                a,b = np.percentile(self.yts, [1,99])
+                ytsi = self.yts[(self.yts>a)&(self.yts<b)]
+
+                plt.hist(ytri, bins=100, alpha=.5, density=True, label='train')
+                plt.hist(ytsi, bins=100, alpha=.5, density=True, label='test')
                 plt.grid()
                 plt.title(f"distribution of predictive target {self.feature_to_predict}")
                 plt.legend();
@@ -102,6 +110,15 @@ class Trainer:
         
     def plot_predictions(self):
         for ax,i in subplots(2, usizex=5, usizey=5):
-            if i==0: plt.scatter(self.ytr, self.predstr, alpha=.1, s=10); plt.title(f"train mae {self.errtr:.3f}") 
-            if i==1: plt.scatter(self.yts, self.predsts, alpha=.1, s=10); plt.title(f"test mae {self.errts:.3f}")
+            if i==0: 
+                plt.scatter(self.ytr, self.predstr, alpha=.1, s=10); 
+                plt.title(f"train mae {self.errtr:.3f}") 
+                plt.xlim(*np.percentile(self.ytr, [0,99]))
+                plt.ylim(*np.percentile(self.predstr, [0,99]))
+            if i==1: 
+                plt.scatter(self.yts, self.predsts, alpha=.1, s=10); 
+                plt.title(f"test mae {self.errts:.3f}")
+                plt.xlim(*np.percentile(self.yts, [0,99]))
+                plt.ylim(*np.percentile(self.predsts, [0,99]))
             plt.grid()
+

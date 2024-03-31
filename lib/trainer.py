@@ -108,17 +108,17 @@ class Trainer:
         return self
 
         
-    def plot_predictions(self):
+    def plot_predictions(self, clip_pcts=[0,99]):
         for ax,i in subplots(2, usizex=5, usizey=5):
             if i==0: 
                 plt.scatter(self.ytr, self.predstr, alpha=.1, s=10); 
                 plt.title(f"train mae {self.errtr:.3f}") 
-                plt.xlim(*np.percentile(self.ytr, [0,99]))
-                plt.ylim(*np.percentile(self.predstr, [0,99]))
+                plt.xlim(*np.percentile(self.ytr, clip_pcts))
+                plt.ylim(*np.percentile(self.predstr, clip_pcts))
             if i==1: 
                 plt.scatter(self.yts, self.predsts, alpha=.1, s=10); 
                 plt.title(f"test mae {self.errts:.3f}")
-                plt.xlim(*np.percentile(self.yts, [0,99]))
-                plt.ylim(*np.percentile(self.predsts, [0,99]))
+                plt.xlim(*np.percentile(self.yts, clip_pcts))
+                plt.ylim(*np.percentile(self.predsts, clip_pcts))
             plt.grid()
 

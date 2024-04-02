@@ -1,4 +1,5 @@
 import numpy as np
+TRAIN, TEST, VAL = 0,1,2
 
 def cv_splitpixels_spatial(h, w, pixels_train, pixels_test, pixels_val, angle):
     
@@ -48,7 +49,7 @@ def cv_splitpixels_spatial(h, w, pixels_train, pixels_test, pixels_val, angle):
         switched = False
                 
     # build a band template
-    band  = np.r_[ [0] * pixels_train + [1] * pixels_test + [2] * pixels_val]
+    band  = np.r_[ [TRAIN] * pixels_train + [TEST] * pixels_test + [VAL] * pixels_val]
     band_pixels = pixels_train + pixels_test + pixels_val
     
     # create mask by shifting each row according to the desired angle

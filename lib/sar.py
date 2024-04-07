@@ -598,3 +598,26 @@ def matexp(C):
     W,V = np.linalg.eigh(C)
     We = np.exp(W)
     return np.einsum("...ij,...j,...jk->...ik", V, We, np.swapaxes(V.conj(), -1, -2))
+
+def matexp_torch(C):
+    """
+    Performs the matrix exponential of the given hermitian C matrix(ces)
+    using pytorch.
+    
+    https://en.wikipedia.org/wiki/Matrix_exponential
+
+    Parameters
+    ----------
+    C : Tensor, shape (..., N, N)
+        Input matrix.
+
+    Returns
+    -------
+    Tensor, shape (..., N, N)
+        The matrix exponential of the input matrix C.
+
+    """
+    W,V = torch.linalg.eigh(C)
+    We = torch.exp(W)
+    return torch.einsum("...ij,...j,...jk->...ik", V, We, torch.swapaxes(V.conj(), -1, -2))
+

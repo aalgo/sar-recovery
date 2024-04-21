@@ -27,36 +27,72 @@ class Scatter2Coherence(nn.Module):
         self.in_channels = in_channels
 
         self.layers = nn.Sequential(
-                 nn.Conv2d(in_channels=self.in_channels, out_channels=20, 
-                           kernel_size=1, stride=1, padding=0, 
+                 nn.Conv2d(in_channels=self.in_channels, out_channels=self.in_channels, 
+                           kernel_size=5, stride=5, padding=0, 
                            dtype=torch.cfloat
                            ),
-                 ComplexActivation(complex_relu),   
-                 ComplexBatchNorm2d(20),
+                 #ComplexActivation(complex_relu),   
+                 #ComplexBatchNorm2d(10),
         
+                 nn.Conv2d(in_channels=self.in_channels, out_channels=10, 
+                           kernel_size=5, stride=1, padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(10),
+
+                 nn.Conv2d(in_channels=10, out_channels=20, 
+                           kernel_size=5
+                           , stride=1, padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(20),
+
                  nn.Conv2d(in_channels=20, out_channels=20, 
-                           kernel_size=5, stride=2, padding=0, 
+                           kernel_size=5
+                           , stride=1, padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(20),
+
+                 nn.Conv2d(in_channels=20, out_channels=20, 
+                           kernel_size=5
+                           , stride=1, padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(20),
+
+                 nn.Conv2d(in_channels=20, out_channels=20, 
+                           kernel_size=5
+                           , stride=1, padding='same', 
                            dtype=torch.cfloat,
                            ),
                  ComplexActivation(complex_relu), 
                  ComplexBatchNorm2d(20),
 
                  nn.Conv2d(in_channels=20, out_channels=10, 
-                           kernel_size=1, stride=1, padding=0, 
+                           kernel_size=5, stride=1, padding='same', 
                            dtype=torch.cfloat,
                            ),
                  ComplexActivation(complex_relu), 
                  ComplexBatchNorm2d(10),
 
-
-                 nn.Conv2d(in_channels=10, out_channels=1, 
-                           kernel_size=5, stride=2, padding=0, 
+                 nn.Conv2d(in_channels=10, out_channels=5, 
+                           kernel_size=5, stride=1, padding='same', 
                            dtype=torch.cfloat,
                            ),
                  ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(5),
 
+                 nn.Conv2d(in_channels=5, out_channels=1, 
+                           kernel_size=3, stride=1, padding='same', 
+                           dtype=torch.cfloat,
+                           ),
         )
-        
+
     def get_output_shape(self, input_shape):
         x = torch.rand((1,self.in_channels, *input_shape)).type(torch.cfloat)
         return self(x).shape[-2:]

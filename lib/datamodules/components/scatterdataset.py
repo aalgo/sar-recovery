@@ -25,13 +25,13 @@ class ScatterCoherencePatchesDataset(patches.PatchesDataset):
                  split, 
                  avg_window_size, 
                  scatter_elems=['Shh', 'Shv'],
-                 coherence_elems=['Shh2']):
+                 coherence_elems=['Svv2']):
 
         if len(np.unique(scatter_elems)) != sum([i in smap.keys() for i in scatter_elems]):
-            raise  ValueError(f"invalid elems '{scatter_elems}', allowed elemsn are '{list(smap.keys())}'")
+            raise  ValueError(f"invalid elems '{scatter_elems}', allowed elems are '{list(smap.keys())}'")
 
         if len(np.unique(coherence_elems)) != sum([i in cmap.keys() for i in coherence_elems]):
-            raise  ValueError(f"invalid elems '{coherence_elems}', allowed elemsn are '{list(cmap.keys())}'")
+            raise  ValueError(f"invalid elems '{coherence_elems}', allowed elems are '{list(cmap.keys())}'")
 
         self.base_path = base_path
         self.date = date

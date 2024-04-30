@@ -127,7 +127,7 @@ class RecoverMatrix_From_RealAndImagElements(object):
         return C
     
 ##############################################################################
-# Parametrization based on Matrix trace normalization
+# Parametrization based on Matrix trace normalization & Cholesky
 ##############################################################################
 class Matrix_NormRhos_parametrization(object):
     def __call__(self, sample: torch.Tensor) -> torch.Tensor:
@@ -149,6 +149,14 @@ class Matrix_TraceNormRhos_parametrization(object):
         x1, x2 = torch.triu_indices(N.shape[-2], N.shape[-1], offset=1)
         rhos = N[..., x1, x2]
         return torch.cat((torch.log(tr), di, rhos.real, rhos.imag), dim=-1)
+    
+class Matrix_Cholesky_parametrization(object):
+    def __call__(self, sample: torch.Tensor) -> torch.Tensor:
+        L = torch.linalg.cholesky(sample)
+        ldiag = torch.einsum("...ii->...i", L).real
+        x1, x2 = torch.tril_indices(L.shape[-2], L.shape[-1], offset=-1)
+        offd = L[..., x1, x2]
+        return torch.cat((ldiag, offd.real, offd.imag), dim=-1)
     
 class RecoverMatrix_From_TraceNormRhos_parametrization(object):
     def __init__(self, matrix_size: int,
@@ -250,6 +258,29 @@ class NormRhosActivarion(nn.Module):
         rhos = rhos / (1+torch.abs(rhos))
         return torch.moveaxis(torch.cat((di, rhos.real, rhos.imag), dim=-1), -1, -3)
     
+class RecoverMatrix_From_Cholesky_parametrization(object):
+    def __init__(self, matrix_size: int,
+                 dtype: _dtype = torch.complex64) -> None:
+        self.matrix_size = matrix_size
+        self.dtype = dtype
+        self.x1, self.x2 = torch.tril_indices(matrix_size, matrix_size,
+                                              offset=-1)
+        
+    def __call__(self, sample: torch.Tensor) -> torch.Tensor:
+        out_shape = sample.shape[:-1] + (self.matrix_size, self.matrix_size)
+        L = torch.zeros(out_shape, dtype=self.dtype, device=sample.device)
+        # Recover params from sample
+        di = sample[..., :self.matrix_size]
+        offd = sample[..., self.matrix_size:]
+        offd = offd[..., :len(self.x1)] + 1j*offd[..., len(self.x1):]
+        # Set outer diagonal elements to offd
+        L[..., self.x1, self.x2] = offd
+        # Set diagonal elements to di (real)
+        d = torch.diagonal(L, dim1=-2, dim2=-1)
+        d[()] = di
+        # perform L @ L.T.conj()
+        return L @ torch.transpose(L, -1, -2).conj()
+    
 ##############################################################################
 # Matrix distances (should be moved from here to a better place)
 ##############################################################################
@@ -269,6 +300,40 @@ class SymmetricRevisedWishartLoss(object):
         d2 = torch.sum(torch.diagonal(torch.linalg.solve(Br, Ar).real, dim1=-2, dim2=-1), dim=-1).mean()
         # Final result
         return (d1 + d2) / 2 - A.shape[-1]
+    
+class RevisedWishartLoss(object):
+    def __init__(self, eps: float = 1e-5) -> None:
+        if not (eps >= 0):
+            raise ValueError("eps should be greater or equal to 0")
+        self.eps = eps
+    def __call__(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        # Regularization of cov matrices with the given eps
+        ri = self.eps * torch.eye(A.shape[-1], device=A.device)
+        Ar = A + ri
+        Br = B + ri
+        _, ldetA = torch.linalg.slogdet(Ar)
+        _, ldetB = torch.linalg.slogdet(Br)
+        # Second trace
+        d_tr = torch.sum(torch.diagonal(torch.linalg.solve(Br, Ar).real, dim1=-2, dim2=-1), dim=-1)
+        # Final result
+        #return (ldetB.mean() - ldetA.mean() + d_tr.mean()) - A.shape[-1]
+        return (ldetB - ldetA + d_tr) - A.shape[-1]
+    
+class WishartLoss(object):
+    def __init__(self, eps: float = 1e-5) -> None:
+        if not (eps >= 0):
+            raise ValueError("eps should be greater or equal to 0")
+        self.eps = eps
+    def __call__(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        # Regularization of cov matrices with the given eps
+        ri = self.eps * torch.eye(A.shape[-1], device=A.device)
+        Ar = B + ri
+        Br = A + ri
+        _, ldetB = torch.linalg.slogdet(Br)
+        # Second trace
+        d_tr = torch.sum(torch.diagonal(torch.linalg.solve(Br, Ar).real, dim1=-2, dim2=-1), dim=-1).mean()
+        # Final result
+        return (ldetB.mean() + d_tr) - A.shape[-1]
     
 class SymmetricRevisedWishartLoss_RelPreload(object):
     def __init__(self, eps: float = 1e-5, rel_eps: float = 1e-5) -> None:
@@ -294,3 +359,9 @@ class SymmetricRevisedWishartLoss_RelPreload(object):
 class FrobeniusNormMeanSquaredLoss(object):
     def __call__(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         return (torch.linalg.norm(A-B, ord='fro', dim=(-2,-1))**2).mean()
+    
+class FrobeniusNormRelativeMeanSquaredLoss(object):
+    def __call__(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        return (torch.linalg.norm(A-B, ord='fro', dim=(-2,-1)).pow(2) /
+                torch.linalg.norm(B, ord='fro', dim=(-2,-1)).pow(2)).mean()
+

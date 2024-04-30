@@ -1,0 +1,18 @@
+dataloader:
+  _target_: lib.datamodules.scatterdatamodule.ScatterCoherencePatchesDataModule
+  base_path:  /home/rlx/data/sar-recovery
+  date_train: 20100520
+  date_test:  20120720
+  date_val:   20120720
+  scatter_elems:
+    - Shh
+    - Shv
+  coherence_elems:
+    - Svv2
+  patch_size: 60
+  avg_window_size: 5
+  splitmask_fn_src: "lambda h, w: data.cv_splitpixels_spatial(h, w, pixels_train = 280, pixels_test = 60, pixels_val = 60, angle = np.pi/4)"
+    
+model:
+  _target_: lib.models.scattermodel.Scatter2Coherence
+  in_channels: 2

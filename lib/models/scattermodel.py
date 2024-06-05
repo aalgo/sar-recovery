@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 from complexPyTorch.complexFunctions import complex_relu
 from complexPyTorch.complexLayers import ComplexBatchNorm2d
-
+from loguru import logger
 
 class ComplexActivation(nn.Module):
     def __init__(self, fn = complex_relu):
@@ -17,14 +17,15 @@ class ComplexActivation(nn.Module):
 
 smap = {'Shh': [0,0], 'Shv': [0,1], 'Svh': [1,0], 'Svv': [1,1]}
 
-class Scatter2Coherence(nn.Module):
+class Scatter2CoherenceM1(nn.Module):
     """
     assumes an input of shape [batch_size, h, w, 2, 2]
     """
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, freeze_first_layer = False):
         super().__init__()
         
         self.in_channels = in_channels
+        self.freeze_first_layer = freeze_first_layer
 
         self.layers = nn.Sequential(
                  nn.Conv2d(in_channels=self.in_channels, out_channels=self.in_channels, 
@@ -93,6 +94,73 @@ class Scatter2Coherence(nn.Module):
                            ),
         )
 
+        if freeze_first_layer:
+            logger.info("freezing first layer")
+            layer = self.layers[0]
+            layer.weight.data = torch.ones_like(layer.weight.data).type(torch.cfloat)
+
+            # bias is zero
+            layer.bias.data   = torch.zeros_like(layer.bias.data).type(torch.cfloat)
+
+            for p in layer.parameters():
+                p.requires_grad = False
+
+
+    def get_output_shape(self, input_shape):
+        x = torch.rand((1,self.in_channels, *input_shape)).type(torch.cfloat)
+        return self(x).shape[-2:]
+    
+    def forward(self, x):
+        
+        x = self.layers(x)
+        
+        return x
+
+class Scatter2CoherenceM2(nn.Module):
+    """
+    assumes an input of shape [batch_size, h, w, 2, 2]
+    """
+    def __init__(self, in_channels):
+        super().__init__()
+        
+        self.in_channels = in_channels
+
+        self.layers = nn.Sequential(
+                 nn.Conv2d(in_channels=self.in_channels, out_channels=64, 
+                           kernel_size=3, stride=1, padding=0, 
+                           dtype=torch.cfloat
+                           ),
+                 ComplexActivation(complex_relu),   
+                 #ComplexBatchNorm2d(64),
+        
+                 nn.Conv2d(in_channels=64, out_channels=128, 
+                           kernel_size=3, stride=1, padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 #ComplexBatchNorm2d(128),
+
+                 nn.Conv2d(in_channels=128, out_channels=128, 
+                           kernel_size=3
+                           , stride=1, padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 #ComplexBatchNorm2d(128),
+
+                 nn.Conv2d(in_channels=128, out_channels=64, 
+                           kernel_size=3, stride=2, #padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 #ComplexBatchNorm2d(64),
+
+                 nn.Conv2d(in_channels=64, out_channels=1, 
+                           kernel_size=5, stride=2, #padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+        )
+
     def get_output_shape(self, input_shape):
         x = torch.rand((1,self.in_channels, *input_shape)).type(torch.cfloat)
         return self(x).shape[-2:]
@@ -103,6 +171,139 @@ class Scatter2Coherence(nn.Module):
         
         return x
         
+
+class Scatter2CoherenceM3(nn.Module):
+    """
+    assumes an input of shape [batch_size, h, w, 2, 2]
+    """
+    def __init__(self, in_channels):
+        super().__init__()
+        
+        self.in_channels = in_channels
+
+        self.layers = nn.Sequential(
+                 #nn.Conv2d(in_channels=self.in_channels, out_channels=self.in_channels, 
+                 #          kernel_size=5, stride=5, padding=0, 
+                 #          dtype=torch.cfloat
+                 #          ),
+                 #ComplexActivation(complex_relu),   
+                 #ComplexBatchNorm2d(10),
+        
+                 nn.Conv2d(in_channels=self.in_channels, out_channels=10, 
+                           kernel_size=5, stride=2, #padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(10),
+
+                 nn.Conv2d(in_channels=10, out_channels=64, 
+                           kernel_size=5, stride=1, #padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(64),
+
+                 nn.Conv2d(in_channels=64, out_channels=128, 
+                           kernel_size=5, stride=1,# padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(128),
+
+                 nn.Conv2d(in_channels=128, out_channels=5, 
+                           kernel_size=5, stride=1, #padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(5),
+
+                 nn.Conv2d(in_channels=5, out_channels=1, 
+                           kernel_size=5, stride=1,# padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+        )
+
+    def get_output_shape(self, input_shape):
+        x = torch.rand((1,self.in_channels, *input_shape)).type(torch.cfloat)
+        return self(x).shape[-2:]
+    
+    def forward(self, x):
+        
+        x = self.layers(x)
+        
+        return x
+
+
+class Scatter2CoherenceM4(nn.Module):
+    """
+    assumes an input of shape [batch_size, h, w, 2, 2]
+    """
+    def __init__(self, in_channels, freeze_last_layer=False):
+        super().__init__()
+        
+        self.in_channels = in_channels
+        self.freeze_last_layer = freeze_last_layer
+
+        self.layers = nn.Sequential(
+                 #nn.Conv2d(in_channels=self.in_channels, out_channels=self.in_channels, 
+                 #          kernel_size=5, stride=5, padding=0, 
+                 #          dtype=torch.cfloat
+                 #          ),
+                 #ComplexActivation(complex_relu),   
+                 #ComplexBatchNorm2d(10),
+        
+                 nn.Conv2d(in_channels=self.in_channels, out_channels=10, 
+                           kernel_size=3, stride=1, padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(10),
+
+                 nn.Conv2d(in_channels=10, out_channels=64, 
+                           kernel_size=3, stride=1, padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(64),
+
+                 nn.Conv2d(in_channels=64, out_channels=5, 
+                           kernel_size=3, stride=1, padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+                 ComplexActivation(complex_relu), 
+                 ComplexBatchNorm2d(5),
+
+                 nn.Conv2d(in_channels=5, out_channels=1, 
+                           kernel_size=5, stride=5,# padding='same', 
+                           dtype=torch.cfloat,
+                           ),
+        )
+        if freeze_last_layer:
+            logger.info("freezing last layer")
+
+            # set weights and freeze first layer to behave as an average 
+            layer = self.layers[-1]
+            layer.weight.data = torch.ones_like(layer.weight.data).type(torch.cfloat)
+
+            # bias is zero
+            layer.bias.data   = torch.zeros_like(layer.bias.data).type(torch.cfloat)
+
+            for p in layer.parameters():
+                p.requires_grad = False
+
+
+
+    def get_output_shape(self, input_shape):
+        x = torch.rand((1,self.in_channels, *input_shape)).type(torch.cfloat)
+        return self(x).shape[-2:]
+    
+    def forward(self, x):
+        
+        x = self.layers(x)
+        
+        return x
+
+
 
 class Scatter2Scatter(nn.Module):
     """
